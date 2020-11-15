@@ -6,12 +6,8 @@ namespace App\Http\Controllers;
 use App\Classes\RekognitionAWS;
 use App\Classes\StorageAWS;
 use App\Mail\MailAWS;
-use Aws\Rekognition\RekognitionClient;
-use Aws\Result;
-use Aws\S3\S3Client;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 
 
@@ -21,8 +17,6 @@ class ImageController extends Controller
     public $folder = 'img';
     public $storage;
     public $word = 'Dog';
-
-
 
     public function showForm()
     {
@@ -50,11 +44,9 @@ class ImageController extends Controller
         $coincidences = $rekognObj->recognition($imgName, $this->folder);
         $isPresent = $rekognObj->findLabel($coincidences, $this->word);
 
-
         if (!$isPresent) {
             Mail::to($request->get('email'))
                 ->send(new MailAWS('Upload image results.',$imgUrl, 'Dog not found'));
-
         }
 
         return view('show')->with([

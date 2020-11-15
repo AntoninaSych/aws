@@ -48,7 +48,6 @@ class RekognitionAWS
         });
 
         if (count($lables) > 0) {
-
             return true;
         }
 
