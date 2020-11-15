@@ -19,10 +19,11 @@ class MailAWS extends Mailable
      *
      * @return void
      */
-    public function __construct($img, $mess)
+    public function __construct($subj, $img, $mess)
     {
         $this->img = $img;
         $this->mess = $mess;
+        $this->subject = $subj;
     }
     /**
      * Build the message.

@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 
-
+use App\Classes\RekognitionAWS;
+use App\Classes\StorageAWS;
 use App\Mail\MailAWS;
 use Aws\Rekognition\RekognitionClient;
+use Aws\Result;
 use Aws\S3\S3Client;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
@@ -19,6 +21,7 @@ class ImageController extends Controller
     public $folder = 'img';
     public $storage;
     public $word = 'Dog';
+
 
 
     public function showForm()
@@ -36,16 +39,21 @@ class ImageController extends Controller
         if ($validator->fails()) {
             return view('form')->withError($validator->errors()->first());
         }
-        $this->__clearStorage();
-        $this->__uploadImage($request);
-        $uploadedImage = $this->__getImage();
-        $coincidences = $this->__recognition($uploadedImage);
-        $isPresent = $this->__findLabel($coincidences, $this->word);
-        $imgUrl = env('AWS_URL') . '/' . array_shift($uploadedImage);
+
+        $storage = new StorageAWS();
+        $imgUrl = $storage->uploadImage($request, $this->folder)->get('ObjectURL');
+
+        $imgExplode = explode("/", $imgUrl);
+        $imgName = end($imgExplode);
+
+        $rekognObj = new RekognitionAWS();
+        $coincidences = $rekognObj->recognition($imgName, $this->folder);
+        $isPresent = $rekognObj->findLabel($coincidences, $this->word);
+
 
         if (!$isPresent) {
             Mail::to($request->get('email'))
-                ->send(new MailAWS($imgUrl, 'Dog not found'));
+                ->send(new MailAWS('Upload image results.',$imgUrl, 'Dog not found'));
 
         }
 
@@ -55,92 +63,5 @@ class ImageController extends Controller
             'isPresent' => $isPresent
         ]);
 
-    }
-
-    private function __findLabel($coincidences, $word): bool
-    {
-        $lables = array_filter($coincidences, function ($item) use ($word) {
-            return ($item['Name'] === $word);
-        });
-
-        if (count($lables) > 0) {
-
-            return true;
-        }
-
-        return false;
-    }
-
-    private function __clearStorage(): void
-    {
-        Storage::delete(Storage::disk('s3')->allFiles());
-
-    }
-
-    private function __uploadImage(Request $request): void
-    {
-        $file = $this->folder . "/" . $request->file('file')->getClientOriginalName();
-
-        $s3 = new S3Client([
-            'version' => 'latest',
-            'region' => env('AWS_DEFAULT_REGION')
-        ]);
-        $result = $s3->putObject([
-            'Bucket' => env('AWS_BUCKET'),
-            'Key' => $this->folder . "/" . $request->file('file')->getClientOriginalName(),
-            'Body' => file_get_contents($request->file('file')),
-            'ACL' => 'public-read',
-            'ContentType' => $request->file('file')->getMimeType(),
-            'CacheControl' => 'max-age'
-        ]);
-
-        $s3->waitUntil('ObjectExists', array(
-            'Bucket' => env('AWS_BUCKET'),
-            'Key' => $file
-        ));
-
-    }
-
-    private function __recognition($storedImages)
-    {
-        $client = new RekognitionClient([
-            'region' => env('AWS_DEFAULT_REGION'),
-            'version' => 'latest',
-            'credentials' => [
-                'key' => env('AWS_ACCESS_KEY_ID'),
-                'secret' => env('AWS_SECRET_ACCESS_KEY')
-            ]
-        ]);
-
-
-        foreach ($storedImages as $image) {
-
-            $result = $client->detectLabels([
-                'Image' => [
-                    'S3Object' => [
-                        'Bucket' => env('AWS_BUCKET'),
-                        'Name' => $image,
-                    ],
-                ], 'MinConfidence' => 50
-            ]);;
-            $s[] = $result->toArray()['Labels'];
-            $coincidences = array_map(function ($item) {
-
-                return [
-                    'Confidence' => $item['Confidence'],
-                    'Name' => $item['Name']
-                ];
-
-            }, $s[0]);
-
-            return $coincidences;
-        }
-    }
-
-    private function __getImage()
-    {
-        $storedImage = Storage::disk('s3')->allFiles($this->folder);
-
-        return $storedImage;
     }
 }
